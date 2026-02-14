@@ -12,6 +12,9 @@ Features:
 - Extracts structured validation errors from FastAPI
 - Supports OTLP export to Jaeger, Tempo, or other backends
 - Optional console export for local debugging
+
+Note: OpenTelemetry packages are optional. If not installed, this module
+      will gracefully disable all telemetry features.
 """
 import json
 import logging
@@ -19,22 +22,30 @@ import logging
 from fastapi import Request
 from fastapi.responses import FileResponse
 from starlette.responses import Response, StreamingResponse
-from opentelemetry import trace, metrics
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader, ConsoleMetricExporter
 
 from . import __version__
 from .config import settings
 
 logger = logging.getLogger(__name__)
+
+# Try to import OpenTelemetry packages - they are optional
+try:
+    from opentelemetry import trace, metrics
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+    from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader, ConsoleMetricExporter
+    
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+    logger.warning("OpenTelemetry packages not installed. Telemetry disabled.")
 
 
 def init_telemetry(app) -> None:
@@ -49,8 +60,11 @@ def init_telemetry(app) -> None:
     Args:
         app: FastAPI application instance
     """
+    if not OTEL_AVAILABLE:
+        return
+    
     if not settings.OTEL_ENABLED:
-        logger.info("OpenTelemetry disabled")
+        logger.info("OpenTelemetry disabled via configuration")
         return
     
     logger.info(f"Initializing OpenTelemetry (endpoint: {settings.OTEL_EXPORTER_OTLP_ENDPOINT})")
@@ -75,7 +89,15 @@ def init_telemetry(app) -> None:
     # Auto-instrument HTTPX (for external HTTP calls)
     HTTPXClientInstrumentor().instrument()
     
+    # Register error capture middleware
+    _register_error_middleware(app)
+    
     logger.info("OpenTelemetry initialized successfully")
+
+
+def _register_error_middleware(app) -> None:
+    """Register the error response capture middleware."""
+    app.middleware("http")(capture_error_response_middleware)
 
 
 def _setup_tracing(resource: Resource) -> None:
@@ -141,11 +163,13 @@ def instrument_sqlalchemy(engine) -> None:
     Args:
         engine: SQLAlchemy engine instance
     """
-    if settings.OTEL_ENABLED:
-        SQLAlchemyInstrumentor().instrument(
-            engine=engine,
-            service=settings.OTEL_SERVICE_NAME,
-        )
+    if not OTEL_AVAILABLE or not settings.OTEL_ENABLED:
+        return
+    
+    SQLAlchemyInstrumentor().instrument(
+        engine=engine,
+        service=settings.OTEL_SERVICE_NAME,
+    )
 
 
 async def capture_error_response_middleware(request: Request, call_next):
@@ -170,6 +194,10 @@ async def capture_error_response_middleware(request: Request, call_next):
         HTTP response (potentially recreated to include captured body)
     """
     response = await call_next(request)
+    
+    # Skip if OpenTelemetry not available
+    if not OTEL_AVAILABLE:
+        return response
     
     # Only process error responses
     if response.status_code >= 400:

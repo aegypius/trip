@@ -9,9 +9,11 @@
 services:
   app:
     # Uncomment to build locally instead of using the published image
+    # Default target includes OpenTelemetry (otel)
     # build:
     #   context: .
     #   dockerfile: Dockerfile
+    #   target: otel  # or 'base' for minimal image without OTEL
 
     # Example: Custom environment variables
     environment:
