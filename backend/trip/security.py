@@ -14,6 +14,7 @@ from .utils.utils import httpx_get
 
 ph = PasswordHasher()
 OIDC_CONFIG = {}
+OIDC_CLIENT = None
 
 
 def generate_totp_secret() -> str:
@@ -79,12 +80,16 @@ def api_token_to_user(session: Session, api_token: str) -> User | None:
 
 
 def get_oidc_client():
-    return OAuth2Client(
-        client_id=get_settings().OIDC_CLIENT_ID,
-        client_secret=get_settings().OIDC_CLIENT_SECRET,
-        scope="openid profile",
-        redirect_uri=get_settings().OIDC_REDIRECT_URI,
-    )
+    global OIDC_CLIENT
+    if not OIDC_CLIENT:
+        OIDC_CLIENT = OAuth2Client(
+            client_id=get_settings().OIDC_CLIENT_ID,
+            client_secret=get_settings().OIDC_CLIENT_SECRET,
+            scope="openid profile",
+            redirect_uri=get_settings().OIDC_REDIRECT_URI,
+        )
+    return OIDC_CLIENT
+
 
 
 async def get_oidc_config():

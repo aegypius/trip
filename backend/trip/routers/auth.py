@@ -1,10 +1,14 @@
 import logging
+import secrets
 from typing import Annotated
 
 import jwt
-from fastapi import APIRouter, Body, Cookie, Depends, HTTPException
+from authlib.oauth2.rfc7636 import create_s256_code_challenge
+from fastapi import APIRouter, Body, Cookie, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlmodel import select
+
+logger = logging.getLogger(__name__)
 
 from ..config import get_settings
 from ..db.core import init_user_data
@@ -18,12 +22,24 @@ from ..utils.date import dt_utc, dt_utc_offset
 from ..utils.utils import generate_filename
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-logger = logging.getLogger(__name__)
 pending_totp_usernames = {}
 
 
 @router.get("/params", response_model=AuthParams)
-async def auth_params() -> AuthParams:
+async def auth_params(request: Request) -> AuthParams:
+    """
+    Get authentication parameters including OIDC authorization URL.
+    
+    Optionally generates PKCE (Proof Key for Code Exchange) parameters for secure OIDC flow:
+    - Creates code_verifier and code_challenge (if PKCE enabled)
+    - Stores verifier and state in httpOnly cookies
+    - Returns authorization URL for the OIDC provider
+    
+    The secure flag is only set when both the OIDC provider and current request use HTTPS.
+    This allows OIDC to work in development (HTTP) while being secure in production (HTTPS).
+    
+    PKCE can be disabled via OIDC_PKCE_ENABLED=false for legacy providers.
+    """
     data = {"oidc": None, "register_enabled": get_settings().REGISTER_ENABLE}
 
     if not (get_settings().OIDC_CLIENT_ID and get_settings().OIDC_CLIENT_SECRET):
@@ -31,14 +47,45 @@ async def auth_params() -> AuthParams:
 
     oidc_config = await get_oidc_config()
     auth_endpoint = oidc_config.get("authorization_endpoint")
-    uri, state = get_oidc_client().create_authorization_url(auth_endpoint)
+    
+    oidc_client = get_oidc_client()
+    
+    # Generate PKCE parameters if enabled (RFC 7636)
+    code_verifier = None
+    if get_settings().OIDC_PKCE_ENABLED:
+        code_verifier = secrets.token_urlsafe(32)
+        code_challenge = create_s256_code_challenge(code_verifier)
+        uri, state = oidc_client.create_authorization_url(
+            auth_endpoint,
+            code_challenge=code_challenge,
+            code_challenge_method='S256'
+        )
+    else:
+        uri, state = oidc_client.create_authorization_url(auth_endpoint)
+    
     data["oidc"] = uri
 
     response = JSONResponse(content=data)
-    is_secure = "https://" in get_settings().OIDC_REDIRECT_URI
+    
+    # Use secure cookies based on config or auto-detect from HTTPS usage
+    if get_settings().COOKIE_SECURE:
+        is_secure = True
+    else:
+        # Only use secure cookies when both endpoints are HTTPS
+        oidc_is_https = "https://" in get_settings().OIDC_REDIRECT_URI
+        request_is_https = request.url.scheme == "https"
+        is_secure = oidc_is_https and request_is_https
+    
+    # Store OIDC state in cookie (60s expiration)
     response.set_cookie(
         "oidc_state", value=state, httponly=True, secure=is_secure, samesite="Lax", max_age=60
     )
+    
+    # Store code verifier if PKCE is enabled
+    if code_verifier:
+        response.set_cookie(
+            "oidc_verifier", value=code_verifier, httponly=True, secure=is_secure, samesite="Lax", max_age=60
+        )
 
     return response
 
@@ -49,24 +96,48 @@ async def oidc_login(
     code: str = Body(..., embed=True),
     state: str = Body(..., embed=True),
     oidc_state: str = Cookie(None),
+    oidc_verifier: str = Cookie(None),
 ) -> Token:
+    """
+    Complete OIDC login flow by exchanging authorization code for tokens.
+    
+    Validates:
+    - State parameter matches cookie (CSRF protection)
+    - Code verifier is present (if PKCE enabled)
+    - ID token signature and claims
+    
+    Creates user account on first login if user doesn't exist.
+    
+    Returns access and refresh tokens for the TRIP application.
+    """
     if not (get_settings().OIDC_CLIENT_ID or get_settings().OIDC_CLIENT_SECRET):
         raise HTTPException(status_code=400, detail="Partial OIDC config")
 
     if not oidc_state or state != oidc_state:
         raise HTTPException(status_code=400, detail="OIDC login failed, invalid state")
+    
+    # Validate PKCE verifier if enabled
+    if get_settings().OIDC_PKCE_ENABLED and not oidc_verifier:
+        raise HTTPException(status_code=400, detail="OIDC login failed, missing verifier")
 
     oidc_config = await get_oidc_config()
     token_endpoint = oidc_config.get("token_endpoint")
+    
+    # Exchange authorization code for tokens (with PKCE verification if enabled)
     try:
         oidc_client = get_oidc_client()
-        token = oidc_client.fetch_token(
-            token_endpoint,
-            grant_type="authorization_code",
-            code=code,
-        )
-    except Exception:
-        raise HTTPException(status_code=401, detail="OIDC login failed")
+        fetch_params = {
+            "token_endpoint": token_endpoint,
+            "grant_type": "authorization_code",
+            "code": code,
+        }
+        if get_settings().OIDC_PKCE_ENABLED:
+            fetch_params["code_verifier"] = oidc_verifier
+        
+        token = oidc_client.fetch_token(**fetch_params)
+    except Exception as e:
+        logger.error(f"OIDC token exchange failed: {e}")
+        raise HTTPException(status_code=401, detail="OIDC token exchange failed")
 
     id_token = token.get("id_token")
     jwks_uri = oidc_config.get("jwks_uri")
