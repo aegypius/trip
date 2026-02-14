@@ -130,6 +130,9 @@ async def oidc_login(
     oidc_config = await get_oidc_config()
     token_endpoint = oidc_config.get("token_endpoint")
     
+    if not token_endpoint:
+        raise HTTPException(status_code=500, detail="OIDC token_endpoint not found in discovery document")
+    
     # Exchange authorization code for tokens (with PKCE verification if enabled)
     try:
         oidc_client = get_oidc_client()
