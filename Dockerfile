@@ -6,13 +6,22 @@ RUN npm install
 COPY src .
 RUN npm run build
 
-# Server
-FROM python:3.12-slim
+# Server base (without observability)
+FROM python:3.12-slim AS base
 LABEL maintainer="github.com/itskovacs"
 LABEL description="Minimalist POI Map Tracker and Trip Planner"
 WORKDIR /app
 COPY backend .
-RUN pip install --no-cache-dir -r trip/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r trip/requirements.txt
 COPY --from=build /app/dist/trip/browser ./frontend
 EXPOSE 8000
 CMD ["fastapi", "run", "/app/trip/main.py", "--host", "0.0.0.0", "--port", "8000"]
+
+# Server with OpenTelemetry (default)
+FROM base AS otel
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r trip/requirements-otel.txt
+
+# Default target includes OTEL
+FROM otel

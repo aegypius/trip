@@ -1,0 +1,9 @@
+# OpenTelemetry instrumentation (optional)
+# Install with: pip install -r requirements-otel.txt
+opentelemetry-api~=1.30
+opentelemetry-sdk~=1.30
+opentelemetry-instrumentation~=0.51b0
+opentelemetry-instrumentation-fastapi~=0.51b0
+opentelemetry-instrumentation-httpx~=0.51b0
+opentelemetry-instrumentation-sqlalchemy~=0.51b0
+opentelemetry-exporter-otlp-proto-grpc~=1.30

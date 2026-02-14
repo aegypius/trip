@@ -14,7 +14,7 @@ from .routers import auth, categories, places, providers
 from .routers import settings as settings_r
 from .routers import token, trips
 from .utils.utils import silence_http_logging
-from .telemetry import init_telemetry, capture_error_response_middleware
+from .telemetry import init_telemetry
 
 if not Path(settings.FRONTEND_FOLDER).is_dir():
     raise ValueError()
@@ -34,10 +34,6 @@ app = FastAPI(lifespan=lifespan)
 
 # Initialize OpenTelemetry BEFORE adding routes and middleware
 init_telemetry(app)
-
-# Add error response capture middleware (must be early in the chain)
-if settings.OTEL_ENABLED:
-    app.middleware("http")(capture_error_response_middleware)
 
 app.add_middleware(
     CORSMiddleware,

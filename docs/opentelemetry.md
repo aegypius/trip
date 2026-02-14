@@ -35,7 +35,32 @@ GET /api/trips/123
 
 ## Installation
 
-OpenTelemetry dependencies are already included in `backend/trip/requirements.txt`. The telemetry module is located at `backend/trip/telemetry.py` and initializes automatically on application startup.
+OpenTelemetry dependencies are **optional**. The application will run normally without them.
+
+### Local Development
+
+```bash
+cd backend
+pip install -r trip/requirements-otel.txt
+```
+
+### Docker
+
+The official Docker image includes OpenTelemetry packages by default (using the `otel` build target).
+
+To build **without** OpenTelemetry support:
+```bash
+docker build --target base -t trip:base .
+```
+
+To build **with** OpenTelemetry support (default):
+```bash
+docker build -t trip:latest .
+# or explicitly:
+docker build --target otel -t trip:otel .
+```
+
+The telemetry module is located at `backend/trip/telemetry.py` and initializes automatically on application startup if the packages are installed and `OTEL_ENABLED=true`.
 
 ## Activation
 
