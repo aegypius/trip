@@ -1,5 +1,6 @@
 import logging
 import secrets
+import traceback
 from typing import Annotated
 
 import jwt
@@ -9,6 +10,12 @@ from fastapi.responses import JSONResponse
 from sqlmodel import select
 
 logger = logging.getLogger(__name__)
+
+try:
+    from opentelemetry import trace
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
 
 from ..config import get_settings
 from ..db.core import init_user_data
@@ -136,7 +143,17 @@ async def oidc_login(
         
         token = oidc_client.fetch_token(**fetch_params)
     except Exception as e:
-        logger.error(f"OIDC token exchange failed: {e}")
+        tb_str = traceback.format_exc()
+        logger.error(f"OIDC token exchange failed: {e}\n{tb_str}")
+        
+        # Add stacktrace to OpenTelemetry span
+        if OTEL_AVAILABLE:
+            span = trace.get_current_span()
+            if span and span.is_recording():
+                span.set_attribute("error.type", type(e).__name__)
+                span.set_attribute("error.message", str(e))
+                span.set_attribute("error.stacktrace", tb_str)
+        
         raise HTTPException(status_code=401, detail="OIDC token exchange failed")
 
     id_token = token.get("id_token")
