@@ -8,3 +8,12 @@ Pillow~=11.2
 authlib~=1.6
 alembic~=1.16
 pyotp~=2.9
+
+# OpenTelemetry (optional - only install if OTEL_ENABLED=true)
+opentelemetry-api~=1.30
+opentelemetry-sdk~=1.30
+opentelemetry-instrumentation~=0.51b0
+opentelemetry-instrumentation-fastapi~=0.51b0
+opentelemetry-instrumentation-httpx~=0.51b0
+opentelemetry-instrumentation-sqlalchemy~=0.51b0
+opentelemetry-exporter-otlp-proto-grpc~=1.30

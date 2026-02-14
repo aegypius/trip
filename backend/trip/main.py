@@ -13,6 +13,7 @@ from .db.core import init_and_migrate_db
 from .routers import (admin, auth, categories, places, providers, settings,
                       token, trips)
 from .utils.utils import silence_http_logging
+from .telemetry import init_telemetry, capture_error_response_middleware
 
 if not Path(get_settings().FRONTEND_FOLDER).is_dir():
     raise ValueError()
@@ -29,6 +30,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+# Initialize OpenTelemetry BEFORE adding routes and middleware
+init_telemetry(app)
+
+# Add error response capture middleware (must be early in the chain)
+if settings.OTEL_ENABLED:
+    app.middleware("http")(capture_error_response_middleware)
 
 app.add_middleware(
     CORSMiddleware,

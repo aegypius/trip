@@ -1,0 +1,51 @@
+# Docker Compose Override Template
+# Copy this file to docker-compose.override.yml and customize for your environment
+#
+# This file demonstrates optional configurations including:
+# - Local development build settings
+# - OIDC authentication
+# - OpenTelemetry observability with Jaeger
+
+services:
+  app:
+    # Uncomment to build locally instead of using the published image
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+
+    # Example: Custom environment variables
+    environment:
+      # OpenTelemetry Configuration (optional)
+      # Requires Jaeger service below to be enabled
+      # - OTEL_ENABLED=true
+      # - OTEL_SERVICE_NAME=trip-backend
+      # - OTEL_ENVIRONMENT=development
+      # - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+      # - OTEL_EXPORTER_OTLP_INSECURE=true
+      # - OTEL_CONSOLE_EXPORTER=false
+      # - OTEL_METRICS_ENABLED=true
+
+    # Uncomment if using Jaeger or other network services
+    # networks:
+    #   - default
+
+  # Jaeger - Optional distributed tracing backend
+  # Uncomment this entire service to enable OpenTelemetry tracing
+  # Access Jaeger UI at: http://localhost:16686
+  # jaeger:
+  #   image: cr.jaegertracing.io/jaegertracing/jaeger:2.14.0
+  #   ports:
+  #     - "16686:16686"  # Jaeger UI
+  #     - "4317:4317"    # OTLP gRPC receiver
+  #     - "4318:4318"    # OTLP HTTP receiver
+  #   environment:
+  #     - COLLECTOR_OTLP_ENABLED=true
+  #     - LOG_LEVEL=info
+  #     - SPAN_STORAGE_TYPE=memory
+  #   networks:
+  #     - default
+
+# Uncomment if using custom networks
+# networks:
+#   default:
+#     driver: bridge

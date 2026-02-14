@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     DEFAULT_MAP_LAT: float = 48.107
     DEFAULT_MAP_LNG: float = -2.988
 
+    # OpenTelemetry Settings
+    OTEL_ENABLED: bool = False
+    OTEL_SERVICE_NAME: str = "trip-backend"
+    OTEL_ENVIRONMENT: str = "production"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4317"
+    OTEL_EXPORTER_OTLP_INSECURE: bool = True
+    OTEL_CONSOLE_EXPORTER: bool = False
+    OTEL_METRICS_ENABLED: bool = False
+
     @field_validator("OIDC_CLIENT_SECRET", mode="before")
     @classmethod
     def validate_oidc_secret_client(cls, value: str) -> str:
