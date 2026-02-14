@@ -9,6 +9,7 @@ from sqlmodel import Session, create_engine
 
 from ..config import settings
 from ..models.models import Category
+from ..telemetry import instrument_sqlalchemy
 
 _engine = None
 
@@ -28,6 +29,7 @@ def get_engine():
             f"sqlite:///{settings.SQLITE_FILE}",
             connect_args={"check_same_thread": False},
         )
+        instrument_sqlalchemy(_engine)
     return _engine
 
 

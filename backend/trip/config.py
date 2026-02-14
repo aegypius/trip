@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     DEFAULT_MAP_LAT: float = 48.107
     DEFAULT_MAP_LNG: float = -2.988
 
+    # OpenTelemetry Settings
+    OTEL_ENABLED: bool = False
+    OTEL_SERVICE_NAME: str = "trip-backend"
+    OTEL_ENVIRONMENT: str = "production"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4317"
+    OTEL_EXPORTER_OTLP_INSECURE: bool = True
+    OTEL_CONSOLE_EXPORTER: bool = False
+    OTEL_METRICS_ENABLED: bool = False
+
     class Config:
         env_file = "storage/config.yml"
 

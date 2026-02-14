@@ -88,8 +88,15 @@ async def httpx_get(link: str) -> str:
             response = await client.get(link)
             response.raise_for_status()
             return response.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Bad Request")
+    except httpx.TimeoutException as e:
+        logging.error(f"Timeout fetching {link}: {e}")
+        raise HTTPException(status_code=400, detail=f"Request timeout: {link}")
+    except httpx.HTTPStatusError as e:
+        logging.error(f"HTTP error fetching {link}: {e.response.status_code} {e.response.text}")
+        raise HTTPException(status_code=400, detail=f"HTTP {e.response.status_code}: {link}")
+    except Exception as e:
+        logging.error(f"Error fetching {link}: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {type(e).__name__}")
 
 
 async def download_file(link: str, raise_on_error: bool = False) -> str:
