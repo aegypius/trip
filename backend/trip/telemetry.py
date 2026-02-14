@@ -237,9 +237,6 @@ async def capture_error_response_middleware(request: Request, call_next):
             except (json.JSONDecodeError, KeyError, TypeError):
                 pass  # Not JSON or unexpected structure
             
-            # Set span status (don't set error attribute - FastAPI instrumentation already does it)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, f"HTTP {response.status_code}"))
-            
             # Recreate response with the same body
             return Response(
                 content=body_bytes,
