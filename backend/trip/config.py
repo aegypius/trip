@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     OIDC_CLIENT_ID: str = ""
     OIDC_CLIENT_SECRET: str = ""
     OIDC_REDIRECT_URI: str = ""
+    OIDC_PKCE_ENABLED: bool = True  # Disable for legacy OIDC providers
+    COOKIE_SECURE: bool = True  # Set to False only in development (not recommended)
 
     DEFAULT_TILE: str = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
     DEFAULT_CURRENCY: str = "€"
