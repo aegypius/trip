@@ -5,6 +5,7 @@ import httpx
 from fastapi import HTTPException
 
 from ...models.models import ProviderPlaceResult
+from ...telemetry import record_exception
 
 
 class BaseMapProvider(ABC):
@@ -57,7 +58,9 @@ class BaseMapProvider(ABC):
                 error_msg = exc.response.json().get("error", {}).get("message", error_msg)
             except Exception:
                 pass
+            record_exception(exc)
             raise HTTPException(status_code=400, detail=error_msg)
 
         except Exception as exc:
+            record_exception(exc)
             raise HTTPException(status_code=400, detail=str(exc))

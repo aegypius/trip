@@ -16,6 +16,8 @@ Features:
 Note: OpenTelemetry packages are optional. If not installed, this module
       will gracefully disable all telemetry features.
 """
+import asyncio
+import functools
 import json
 import logging
 
@@ -246,3 +248,69 @@ async def capture_error_response_middleware(request: Request, call_next):
             )
     
     return response
+
+
+def record_exception(exception: Exception) -> None:
+    """
+    Record an exception in the current OpenTelemetry span.
+    
+    This is a convenience function that safely records exceptions to spans
+    when OpenTelemetry is available and there's an active recording span.
+    
+    Args:
+        exception: The exception to record in the current span
+        
+    Example:
+        try:
+            risky_operation()
+        except Exception as e:
+            record_exception(e)
+            raise HTTPException(status_code=400, detail="Operation failed")
+    """
+    if not OTEL_AVAILABLE:
+        return
+    
+    span = trace.get_current_span()
+    if span and span.is_recording():
+        span.record_exception(exception)
+
+
+def trace_exceptions(func):
+    """
+    Decorator that automatically records any unhandled exceptions to OpenTelemetry spans.
+    
+    Works with both sync and async functions. The exception is recorded and then re-raised,
+    allowing normal exception handling to continue.
+    
+    Args:
+        func: Function to wrap (sync or async)
+        
+    Example:
+        @trace_exceptions
+        async def fetch_data(url: str):
+            response = await httpx.get(url)
+            return response.json()
+            
+        @trace_exceptions
+        def process_file(path: str):
+            with open(path) as f:
+                return f.read()
+    """
+    if asyncio.iscoroutinefunction(func):
+        @functools.wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            try:
+                return await func(*args, **kwargs)
+            except Exception as e:
+                record_exception(e)
+                raise
+        return async_wrapper
+    else:
+        @functools.wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                record_exception(e)
+                raise
+        return sync_wrapper

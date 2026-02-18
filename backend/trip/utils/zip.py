@@ -8,6 +8,12 @@ from fastapi import Depends, HTTPException, UploadFile
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
+try:
+    from opentelemetry import trace
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+
 from .. import __version__ as trip_version
 from ..config import settings
 from ..deps import SessionDep, get_current_username
@@ -123,6 +129,10 @@ def process_backup_export(session: SessionDep, backup_id: int):
         db_backup.filename = filename
         session.commit()
     except Exception as exc:
+        if OTEL_AVAILABLE:
+            span = trace.get_current_span()
+            if span and span.is_recording():
+                span.record_exception(exc)
         db_backup.status = BackupStatus.FAILED
         db_backup.error_message = str(exc)[:200]
         session.commit()
@@ -145,7 +155,11 @@ async def process_backup_import(
     await file.seek(0)
     try:
         zip_content = await file.read()
-    except Exception:
+    except Exception as e:
+        if OTEL_AVAILABLE:
+            span = trace.get_current_span()
+            if span and span.is_recording():
+                span.record_exception(e)
         raise HTTPException(status_code=400, detail="Invalid file")
 
     with ZipFile(io.BytesIO(zip_content), "r") as zipf:
@@ -155,7 +169,11 @@ async def process_backup_import(
 
         try:
             data = json.loads(zipf.read("data.json"))
-        except Exception:
+        except Exception as e:
+            if OTEL_AVAILABLE:
+                span = trace.get_current_span()
+                if span and span.is_recording():
+                    span.record_exception(e)
             raise HTTPException(status_code=400, detail="Invalid file")
 
         image_files = {
@@ -495,7 +513,11 @@ async def process_backup_import(
                 "settings": UserRead.serialize(session.get(User, current_user)),
             }
 
-        except Exception:
+        except Exception as e:
+            if OTEL_AVAILABLE:
+                span = trace.get_current_span()
+                if span and span.is_recording():
+                    span.record_exception(e)
             session.rollback()
             for filename in created_image_filenames:
                 remove_image(filename)
@@ -753,7 +775,11 @@ async def parse_mymaps_kmz(file: UploadFile) -> list[dict]:
     await file.seek(0)
     try:
         kmz_content = await file.read()
-    except Exception:
+    except Exception as e:
+        if OTEL_AVAILABLE:
+            span = trace.get_current_span()
+            if span and span.is_recording():
+                span.record_exception(e)
         raise HTTPException(status_code=400, detail="Invalid KMZ file")
 
     places = []
@@ -766,7 +792,11 @@ async def parse_mymaps_kmz(file: UploadFile) -> list[dict]:
                 with kmz.open(kml_filename, "r") as kml_file:
                     kml_content = kml_file.read().decode("utf-8")
                     places.extend(parse_mymaps_kml(kml_content))
-    except Exception:
+    except Exception as e:
+        if OTEL_AVAILABLE:
+            span = trace.get_current_span()
+            if span and span.is_recording():
+                span.record_exception(e)
         raise HTTPException(status_code=400, detail="Failed to parse KMZ file")
 
     return places

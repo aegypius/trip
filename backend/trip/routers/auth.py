@@ -12,6 +12,7 @@ from ..models.models import (AuthParams, LoginRegisterModel, PendingTOTP,
 from ..security import (create_access_token, create_tokens,
                         generate_totp_secret, get_oidc_client, get_oidc_config,
                         hash_password, verify_password, verify_totp_code)
+from ..telemetry import record_exception
 from ..utils.date import dt_utc, dt_utc_offset
 from ..utils.utils import generate_filename
 
@@ -62,7 +63,8 @@ async def oidc_login(
             grant_type="authorization_code",
             code=code,
         )
-    except Exception:
+    except Exception as e:
+        record_exception(e)
         raise HTTPException(status_code=401, detail="OIDC login failed")
 
     id_token = token.get("id_token")
@@ -96,7 +98,8 @@ async def oidc_login(
                     audience=settings.OIDC_CLIENT_ID,
                     issuer=issuer,
                 )
-            except Exception:
+            except Exception as e:
+                record_exception(e)
                 raise HTTPException(status_code=401, detail="Invalid ID token")
         case _:
             raise HTTPException(status_code=500, detail="OIDC login failed, algorithm not handled")
@@ -198,9 +201,11 @@ def refresh_token(refresh_token: str = Body(..., embed=True)):
 
         return {"access_token": new_access_token}
 
-    except jwt.ExpiredSignatureError:
+    except jwt.ExpiredSignatureError as e:
+        record_exception(e)
         raise HTTPException(status_code=401, detail="Invalid Token")
-    except jwt.PyJWTError:
+    except jwt.PyJWTError as e:
+        record_exception(e)
         raise HTTPException(status_code=401, detail="Invalid Token")
 
 

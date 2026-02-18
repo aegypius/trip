@@ -9,6 +9,7 @@ from ..deps import SessionDep, get_current_username
 from ..models.models import (Category, CategoryCreate, CategoryRead,
                              CategoryUpdate, Image, Place)
 from ..security import verify_exists_and_owns
+from ..telemetry import record_exception
 from ..utils.utils import b64img_decode, save_image_to_file
 
 router = APIRouter(prefix="/api/categories", tags=["categories"])
@@ -65,7 +66,8 @@ def update_category(
     if category_image:
         try:
             image_bytes = b64img_decode(category_image)
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             raise HTTPException(status_code=400, detail="Bad request")
 
         filename = save_image_to_file(image_bytes, settings.PLACE_IMAGE_SIZE)
@@ -83,7 +85,8 @@ def update_category(
                 session.delete(old_image)
                 db_category.image_id = None
                 session.refresh(db_category)
-            except Exception:
+            except Exception as e:
+                record_exception(e)
                 raise HTTPException(status_code=400, detail="Bad request")
 
         db_category.image_id = image.id
@@ -116,7 +119,8 @@ def delete_category(
     if db_category.image:
         try:
             session.delete(db_category.image)
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             raise HTTPException(
                 status_code=500,
                 detail="Roses are red, violets are blue, if you're reading this, I'm sorry for you",

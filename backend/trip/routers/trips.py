@@ -8,6 +8,7 @@ from sqlmodel import select
 
 from ..config import settings
 from ..deps import SessionDep, get_current_username
+from ..telemetry import record_exception
 from ..models.models import (Image, Place, Trip, TripAttachment,
                              TripAttachmentRead, TripChecklistItem,
                              TripChecklistItemCreate, TripChecklistItemRead,
@@ -179,7 +180,8 @@ def update_trip(
     if image_b64:
         try:
             image_bytes = b64img_decode(image_b64)
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             raise HTTPException(status_code=400, detail="Bad request")
 
         filename = save_image_to_file(image_bytes, settings.TRIP_IMAGE_SIZE)
@@ -197,7 +199,8 @@ def update_trip(
                 session.delete(old_image)
                 db_trip.image_id = None
                 session.refresh(db_trip)
-            except Exception:
+            except Exception as e:
+                record_exception(e)
                 raise HTTPException(status_code=400, detail="Bad request")
 
         db_trip.image_id = image.id
@@ -243,7 +246,8 @@ def delete_trip(
     if db_trip.image:
         try:
             session.delete(db_trip.image)
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             raise HTTPException(
                 status_code=500,
                 detail="Roses are red, violets are blue, if you're reading this, I'm sorry for you",
@@ -451,7 +455,8 @@ def update_tripitem(
         if image_b64:
             try:
                 image_bytes = b64img_decode(image_b64)
-            except Exception:
+            except Exception as e:
+                record_exception(e)
                 raise HTTPException(status_code=400, detail="Bad request")
 
             filename = save_image_to_file(image_bytes, 0)
@@ -469,7 +474,8 @@ def update_tripitem(
                     session.delete(old_image)
                     db_item.image_id = None
                     session.refresh(db_item)
-                except Exception:
+                except Exception as e:
+                    record_exception(e)
                     raise HTTPException(status_code=400, detail="Bad request")
 
             db_item.image_id = image.id
@@ -481,7 +487,8 @@ def update_tripitem(
                     session.delete(old_image)
                     db_item.image_id = None
                     session.refresh(db_item)
-                except Exception:
+                except Exception as e:
+                    record_exception(e)
                     raise HTTPException(status_code=400, detail="Bad request")
 
     place_id = item_data.pop("place", None)

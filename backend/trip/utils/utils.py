@@ -9,6 +9,12 @@ import httpx
 from fastapi import HTTPException, UploadFile
 from PIL import Image
 
+try:
+    from opentelemetry import trace
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+
 from .. import __version__
 from ..config import Settings
 
@@ -49,7 +55,8 @@ def remove_attachment(trip_id: int, filename: str):
         if not att_fp.exists():
             return
         att_fp.unlink()
-    except OSError:
+    except OSError as e:
+        record_exception(e)
         pass
 
 
@@ -61,7 +68,8 @@ def remove_backup(filename: str):
         if not backup_fp.exists():
             return
         backup_fp.unlink()
-    except OSError:
+    except OSError as e:
+        record_exception(e)
         pass
 
 
@@ -71,7 +79,8 @@ def remove_image(filename: str):
         if not image_fp.exists():
             return
         image_fp.unlink()
-    except OSError:
+    except OSError as e:
+        record_exception(e)
         pass
 
 
@@ -90,12 +99,15 @@ async def httpx_get(link: str) -> str:
             return response.json()
     except httpx.TimeoutException as e:
         logging.error(f"Timeout fetching {link}: {e}")
+        record_exception(e)
         raise HTTPException(status_code=400, detail=f"Request timeout: {link}")
     except httpx.HTTPStatusError as e:
         logging.error(f"HTTP error fetching {link}: {e.response.status_code} {e.response.text}")
+        record_exception(e)
         raise HTTPException(status_code=400, detail=f"HTTP {e.response.status_code}: {link}")
     except Exception as e:
         logging.error(f"Error fetching {link}: {type(e).__name__}: {e}")
+        record_exception(e)
         raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {type(e).__name__}")
 
 
@@ -127,6 +139,7 @@ async def download_file(link: str, raise_on_error: bool = False) -> str:
                 f.write(response.content)
             return str(path)
     except Exception as e:
+        record_exception(e)
         if raise_on_error:
             raise HTTPException(status_code=400, detail=f"Failed to download file: {e}")
         return ""
@@ -145,7 +158,8 @@ async def check_update():
 
         return None
 
-    except Exception:
+    except Exception as e:
+        record_exception(e)
         raise HTTPException(status_code=503, detail="Couldn't verify for update")
 
 
@@ -178,7 +192,8 @@ def patch_image(fp: str, size: int = 400) -> bool:
             im.save(fp)
             return True
 
-    except Exception:
+    except Exception as e:
+        record_exception(e)
         ...
     return False
 
@@ -225,7 +240,8 @@ def save_image_to_file(content: bytes, size: int = 600) -> str:
 
             return filename
 
-    except Exception:
+    except Exception as e:
+        record_exception(e)
         if filepath and filepath.exists():
             filepath.unlink()
     return ""
@@ -245,7 +261,8 @@ async def save_attachment(trip_id: int, file: UploadFile) -> str:
             while chunk := await file.read(8192):
                 buf.write(chunk)
         return filename
-    except Exception:
+    except Exception as e:
+        record_exception(e)
         if filepath.exists():
             filepath.unlink()
     return ""

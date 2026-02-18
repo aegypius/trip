@@ -8,6 +8,7 @@ from ..config import settings
 from ..deps import SessionDep, get_current_username
 from ..models.models import Image, Place, PlaceCreate, PlaceRead, PlaceUpdate
 from ..security import verify_exists_and_owns
+from ..telemetry import record_exception
 from ..utils.utils import (b64img_decode, download_file, patch_image,
                            save_image_to_file)
 
@@ -114,7 +115,8 @@ async def update_place(
                     session.delete(old_image)
                     db_place.image_id = None
                     session.refresh(db_place)
-                except Exception:
+                except Exception as e:
+                    record_exception(e)
                     raise HTTPException(status_code=400, detail="Bad request")
             db_place.image_id = image.id
 
@@ -137,7 +139,8 @@ def delete_place(
     if db_place.image:
         try:
             session.delete(db_place.image)
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             raise HTTPException(
                 status_code=500,
                 detail="Roses are red, violets are blue, if you're reading this, I'm sorry for you",

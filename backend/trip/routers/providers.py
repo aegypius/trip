@@ -7,6 +7,7 @@ from ..deps import SessionDep, get_current_username
 from ..models.models import (LatitudeLongitude, OSMRoutingQuery,
                              OSMRoutingResponse, ProviderBoundaries,
                              ProviderPlaceResult, User)
+from ..telemetry import record_exception
 from ..utils.csv import iter_csv_lines
 from ..utils.providers import (BaseMapProvider, GoogleMapsProvider,
                                OpenStreetMapProvider)
@@ -80,7 +81,8 @@ async def bulk_to_places(
             else:
                 if results := await provider.text_search(content):
                     return await provider.result_to_place(results[0])
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             pass
         return None
 
@@ -105,7 +107,8 @@ async def text_search(
     async def _process_result(place_data: dict, provider: BaseMapProvider) -> ProviderPlaceResult | None:
         try:
             return await provider.result_to_place(place_data)
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             return None
 
     return await _process_batch(results, provider, _process_result)
@@ -128,7 +131,8 @@ async def nearby_search(
     async def _process_result(place_data: dict, provider: BaseMapProvider) -> ProviderPlaceResult | None:
         try:
             return await provider.result_to_place(place_data)
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             return None
 
     return await _process_batch(results, provider, _process_result)
@@ -189,7 +193,11 @@ async def google_mymaps_kmz_import(
                 }
                 results = await provider.text_search(place.get("name"), location)
                 return await provider.result_to_place(results[0])
-        except Exception:
+        except Exception as e:
+            if OTEL_AVAILABLE:
+                span = trace.get_current_span()
+                if span and span.is_recording():
+                    span.record_exception(e)
             return None
 
     return await _process_batch(places, provider, _process_kml_place)
@@ -220,7 +228,8 @@ async def google_takeout_csv_import(
         try:
             if place_data := await provider.url_to_place(url):
                 return await provider.result_to_place(place_data)
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             pass
         return None
 

@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from ...models.models import (LatLng, OSMRoutingQuery, OSMRoutingResponse,
                               ProviderBoundaries, ProviderPlaceResult)
+from ...telemetry import record_exception
 from .base import BaseMapProvider
 
 
@@ -114,7 +115,8 @@ class OpenStreetMapProvider(BaseMapProvider):
             amount = charge.split(" ")[0]
             amount_clean = "".join(c for c in amount if c.isdigit() or c == ".")
             return float(amount_clean) if amount_clean else None
-        except (ValueError, IndexError):
+        except (ValueError, IndexError) as e:
+            record_exception(e)
             return None
 
     async def result_to_place(self, place: dict[str, Any]) -> ProviderPlaceResult:
@@ -189,7 +191,8 @@ class OpenStreetMapProvider(BaseMapProvider):
                 northeast=LatLng(lat=north_lat, lng=east_lon),
                 southwest=LatLng(lat=south_lat, lng=west_lon),
             )
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            record_exception(e)
             return None
 
     async def get_route(self, data: OSMRoutingQuery) -> OSMRoutingResponse:

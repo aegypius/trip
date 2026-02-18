@@ -2,6 +2,7 @@ import re
 from typing import Any
 
 from ...models.models import ProviderBoundaries, ProviderPlaceResult
+from ...telemetry import record_exception
 from .base import BaseMapProvider
 
 
@@ -43,7 +44,8 @@ class GoogleMapsProvider(BaseMapProvider):
         try:
             result = await self._request("GET", url, params=params, follow_redirects=True)
             return result if isinstance(result, str) else None
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             return None
 
     async def _resolve_shortlink(self, link_id: str) -> str:
@@ -152,7 +154,8 @@ class GoogleMapsProvider(BaseMapProvider):
             place_id = await self._cid_to_pid(cid)
             return await self.get_place_details(place_id)
 
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             return None
 
     async def geocode(self, name: str) -> ProviderBoundaries | None:

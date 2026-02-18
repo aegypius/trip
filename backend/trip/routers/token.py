@@ -8,6 +8,7 @@ from ..deps import SessionDep
 from ..models.models import (Category, CategoryRead, Image, Place, PlaceCreate,
                              PlaceRead, TokenGoogleSearch, TokenPlaceCreate)
 from ..security import api_token_to_user
+from ..telemetry import record_exception
 from ..utils.utils import (b64img_decode, download_file, patch_image,
                            save_image_to_file)
 from .places import create_place
@@ -97,7 +98,8 @@ async def token_google_search(
         else:
             results = await text_search(data.q, session, current_user)
             result = results[0]
-    except Exception:
+    except Exception as e:
+        record_exception(e)
         raise HTTPException(status_code=404, detail="Not found")
 
     category_name = result.category or data.category
