@@ -13,7 +13,7 @@ from .models.models import Token, User
 from .utils.utils import httpx_get
 
 ph = PasswordHasher()
-OIDC_CONFIG = {}
+OIDC_CONFIG = None
 OIDC_CLIENT = None
 
 

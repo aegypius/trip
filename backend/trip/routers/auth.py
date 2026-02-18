@@ -126,7 +126,7 @@ async def oidc_login(
     try:
         oidc_client = get_oidc_client()
         fetch_params = {
-            "token_endpoint": token_endpoint,
+            "url": token_endpoint,
             "grant_type": "authorization_code",
             "code": code,
         }
