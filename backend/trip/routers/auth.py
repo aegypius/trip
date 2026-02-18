@@ -1,6 +1,5 @@
 import logging
 import secrets
-import traceback
 from typing import Annotated
 
 import jwt
@@ -11,12 +10,6 @@ from sqlmodel import select
 
 logger = logging.getLogger(__name__)
 
-try:
-    from opentelemetry import trace
-    OTEL_AVAILABLE = True
-except ImportError:
-    OTEL_AVAILABLE = False
-
 from ..config import get_settings
 from ..db.core import init_user_data
 from ..deps import SessionDep, get_current_username
@@ -25,6 +18,7 @@ from ..models.models import (AuthParams, LoginRegisterModel, MagicLink,
 from ..security import (create_access_token, create_tokens,
                         generate_totp_secret, get_oidc_client, get_oidc_config,
                         hash_password, verify_password, verify_totp_code)
+from ..telemetry import record_exception
 from ..utils.date import dt_utc, dt_utc_offset
 from ..utils.utils import generate_filename
 
@@ -136,6 +130,7 @@ async def oidc_login(
     # Exchange authorization code for tokens (with PKCE verification if enabled)
     try:
         oidc_client = get_oidc_client()
+<<<<<<< HEAD
         fetch_params = {
             "url": token_endpoint,
             "grant_type": "authorization_code",
@@ -146,17 +141,7 @@ async def oidc_login(
         
         token = oidc_client.fetch_token(**fetch_params)
     except Exception as e:
-        tb_str = traceback.format_exc()
-        logger.error(f"OIDC token exchange failed: {e}\n{tb_str}")
-        
-        # Add stacktrace to OpenTelemetry span
-        if OTEL_AVAILABLE:
-            span = trace.get_current_span()
-            if span and span.is_recording():
-                span.set_attribute("error.type", type(e).__name__)
-                span.set_attribute("error.message", str(e))
-                span.set_attribute("error.stacktrace", tb_str)
-        
+        record_exception(e)
         raise HTTPException(status_code=401, detail="OIDC token exchange failed")
 
     id_token = token.get("id_token")
@@ -180,7 +165,7 @@ async def oidc_login(
             issuer=issuer,
         )
     except Exception as exc:
-        logger.error(f"[OIDC LOGIN] {exc}")
+        record_exception(exc)
         raise HTTPException(status_code=401, detail="Invalid ID token")
 
     if not decoded:
@@ -296,9 +281,11 @@ def refresh_token(refresh_token: str = Body(..., embed=True)):
 
         return {"access_token": new_access_token}
 
-    except jwt.ExpiredSignatureError:
+    except jwt.ExpiredSignatureError as e:
+        record_exception(e)
         raise HTTPException(status_code=401, detail="Invalid Token")
-    except jwt.PyJWTError:
+    except jwt.PyJWTError as e:
+        record_exception(e)
         raise HTTPException(status_code=401, detail="Invalid Token")
 
 

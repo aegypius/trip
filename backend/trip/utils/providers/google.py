@@ -1,10 +1,8 @@
 import re
 from typing import Any
 
-from fastapi import HTTPException
-
-from ...models.models import (ProviderBoundaries, ProviderPlaceResult,
-                              RoutingQuery, RoutingResponse)
+from ...models.models import ProviderBoundaries, ProviderPlaceResult
+from ...telemetry import record_exception
 from .base import BaseMapProvider
 
 
@@ -46,7 +44,8 @@ class GoogleMapsProvider(BaseMapProvider):
         try:
             result = await self._request("GET", url, params=params, follow_redirects=True)
             return result if isinstance(result, str) else None
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             return None
 
     async def _resolve_shortlink(self, link_id: str) -> str:
@@ -155,7 +154,8 @@ class GoogleMapsProvider(BaseMapProvider):
             place_id = await self._cid_to_pid(cid)
             return await self.get_place_details(place_id)
 
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             return None
 
     async def geocode(self, name: str) -> ProviderBoundaries | None:
@@ -170,53 +170,3 @@ class GoogleMapsProvider(BaseMapProvider):
         geometry = data["results"][0].get("geometry", {})
         bbox = geometry.get("bounds") or geometry.get("viewport")
         return ProviderBoundaries(**bbox)
-
-    async def get_route(self, data: RoutingQuery) -> RoutingResponse:
-        if data.profile not in ["car", "foot", "bike", "transit"]:
-            raise HTTPException(status_code=400, detail="Specified profile is not supported")
-
-        profile_mapping = {"car": "DRIVE", "foot": "WALK", "bike": "BICYCLE", "transit": "TRANSIT"}
-        origin = data.coordinates[0]
-        destination = data.coordinates[-1]
-
-        url = "https://routes.googleapis.com/directions/v2:computeRoutes"
-        headers = {
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": self.api_key,
-            "X-Goog-FieldMask": "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline",
-        }
-
-        body = {
-            "origin": {"location": {"latLng": {"latitude": origin.lat, "longitude": origin.lng}}},
-            "destination": {
-                "location": {"latLng": {"latitude": destination.lat, "longitude": destination.lng}}
-            },
-            "travelMode": profile_mapping[data.profile],
-            "computeAlternativeRoutes": False,
-            "units": "METRIC",
-        }
-
-        if len(data.coordinates) > 2:
-            intermediates = []
-            for latlng in data.coordinates[1:-1]:
-                intermediates.append(
-                    {"location": {"latLng": {"latitude": latlng.lat, "longitude": latlng.lng}}}
-                )
-            body["intermediates"] = intermediates
-
-        data = await self._request("POST", url, headers=headers, json=body)
-        routes = data.get("routes", [])
-        if not routes:
-            raise HTTPException(status_code=404, detail="No route found")
-
-        route = routes[0]
-        polyline = route.get("polyline", {}).get("encodedPolyline")
-        if not polyline:
-            raise HTTPException(status_code=404, detail="No route geometry found")
-        duration = float(route.get("duration", "0s").rstrip("s"))
-
-        return RoutingResponse(
-            distance=route.get("distanceMeters", 0),
-            duration=duration,
-            coordinates=self._decode_encoded_polyline(polyline),
-        )

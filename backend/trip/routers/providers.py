@@ -1,13 +1,13 @@
 import asyncio
-import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from ..deps import SessionDep, get_current_username
-from ..models.models import (LatitudeLongitude, ProviderBoundaries,
-                             ProviderPlaceResult, RoutingQuery,
-                             RoutingResponse, User)
+from ..models.models import (LatitudeLongitude, OSMRoutingQuery,
+                             OSMRoutingResponse, ProviderBoundaries,
+                             ProviderPlaceResult, User)
+from ..telemetry import record_exception
 from ..utils.csv import iter_csv_lines
 from ..utils.providers import (BaseMapProvider, GoogleMapsProvider,
                                OpenStreetMapProvider)
@@ -16,17 +16,14 @@ from ..utils.zip import parse_mymaps_kmz
 router = APIRouter(prefix="/api/completions", tags=["completions"])
 
 
-logger = logging.getLogger(__name__)
-
-
-def _get_user(session: SessionDep, current_user: str) -> User:
+def _get_user(session: SessionDep, current_user: str):
     db_user = session.get(User, current_user)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     return db_user
 
 
-def _raise_missing_apikey(db_user, raise_msg=""):
+def _raise_missing_apikey(db_user, raise_msg="") -> bool:
     if not db_user.google_apikey:
         raise HTTPException(
             status_code=400, detail=raise_msg if raise_msg else "Google Maps API key not configured"
@@ -62,14 +59,7 @@ async def _process_batch(
         return_exceptions=True,
     )
 
-    valid_results = []
-    for r in results:
-        if isinstance(r, ProviderPlaceResult):
-            valid_results.append(r)
-        elif isinstance(r, Exception):
-            logger.error(f"[PROCESS BATCH]: A item failed, {r}")
-
-    return valid_results
+    return [r for r in results if isinstance(r, ProviderPlaceResult)]
 
 
 @router.post("/bulk")
@@ -91,7 +81,8 @@ async def bulk_to_places(
             else:
                 if results := await provider.text_search(content):
                     return await provider.result_to_place(results[0])
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             pass
         return None
 
@@ -116,7 +107,8 @@ async def text_search(
     async def _process_result(place_data: dict, provider: BaseMapProvider) -> ProviderPlaceResult | None:
         try:
             return await provider.result_to_place(place_data)
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             return None
 
     return await _process_batch(results, provider, _process_result)
@@ -139,7 +131,8 @@ async def nearby_search(
     async def _process_result(place_data: dict, provider: BaseMapProvider) -> ProviderPlaceResult | None:
         try:
             return await provider.result_to_place(place_data)
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             return None
 
     return await _process_batch(results, provider, _process_result)
@@ -160,16 +153,15 @@ async def geocode_search(
     return bounds
 
 
+#####
+## OSM-specific
 @router.post("/route")
 async def get_route(
-    data: RoutingQuery,
+    data: OSMRoutingQuery,
     session: SessionDep,
     current_user: Annotated[str, Depends(get_current_username)],
-) -> RoutingResponse:
-    if len(data.coordinates) < 2:
-        raise HTTPException(status_code=400, detail="Coordinates required")
-    provider = _get_map_provider(session, current_user)
-    return await provider.get_route(data)
+) -> OSMRoutingResponse:
+    return await OpenStreetMapProvider().get_route(data)
 
 
 #####
@@ -187,7 +179,8 @@ async def google_mymaps_kmz_import(
     if not file.filename or not file.filename.lower().endswith(".kmz"):
         raise HTTPException(status_code=400, detail="Invalid KMZ file")
 
-    places = await asyncio.to_thread(parse_mymaps_kmz, file)
+    places = await parse_mymaps_kmz(file)
+
     async def _process_kml_place(place: dict, provider: BaseMapProvider) -> ProviderPlaceResult | None:
         try:
             if url := place.get("url"):
@@ -200,7 +193,11 @@ async def google_mymaps_kmz_import(
                 }
                 results = await provider.text_search(place.get("name"), location)
                 return await provider.result_to_place(results[0])
-        except Exception:
+        except Exception as e:
+            if OTEL_AVAILABLE:
+                span = trace.get_current_span()
+                if span and span.is_recording():
+                    span.record_exception(e)
             return None
 
     return await _process_batch(places, provider, _process_kml_place)
@@ -231,7 +228,8 @@ async def google_takeout_csv_import(
         try:
             if place_data := await provider.url_to_place(url):
                 return await provider.result_to_place(place_data)
-        except Exception:
+        except Exception as e:
+            record_exception(e)
             pass
         return None
 

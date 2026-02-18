@@ -4,7 +4,8 @@ from typing import Any
 import httpx
 from fastapi import HTTPException
 
-from ...models.models import ProviderPlaceResult, RoutingQuery, RoutingResponse
+from ...models.models import ProviderPlaceResult
+from ...telemetry import record_exception
 
 
 class BaseMapProvider(ABC):
@@ -13,14 +14,6 @@ class BaseMapProvider(ABC):
 
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key
-
-    @abstractmethod
-    def _categorize(self, types: set[str]) -> str | None:
-        pass
-
-    @abstractmethod
-    async def result_to_place(self, place: dict[str, Any]) -> ProviderPlaceResult:
-        pass
 
     @abstractmethod
     async def text_search(self, query: str, location: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -35,7 +28,11 @@ class BaseMapProvider(ABC):
         pass
 
     @abstractmethod
-    async def get_route(self, data: RoutingQuery) -> RoutingResponse:
+    async def result_to_place(self, place: dict[str, Any]) -> ProviderPlaceResult:
+        pass
+
+    @abstractmethod
+    def _categorize(self, types: set[str]) -> str | None:
         pass
 
     async def _request(
@@ -61,54 +58,9 @@ class BaseMapProvider(ABC):
                 error_msg = exc.response.json().get("error", {}).get("message", error_msg)
             except Exception:
                 pass
+            record_exception(exc)
             raise HTTPException(status_code=400, detail=error_msg)
 
         except Exception as exc:
+            record_exception(exc)
             raise HTTPException(status_code=400, detail=str(exc))
-
-    def _decode_encoded_polyline(self, encoded: str) -> list[tuple[float, float]]:
-        # based on gist.github.com/signed0/2031157 and nejohnson2/d41a27dea7b267986cce
-        # todo: use https://pypi.org/project/polyline/
-        coordinates = []
-        index = 0
-        lat = 0
-        lng = 0
-        length = len(encoded)
-
-        try:
-            while index < length:
-                # Decode lat
-                result = 0
-                shift = 0
-                while True:
-                    if index >= length:
-                        raise ValueError("Truncated polyline string")
-                    byte = ord(encoded[index]) - 63
-                    index += 1
-                    result |= (byte & 0x1F) << shift
-                    shift += 5
-                    if byte < 0x20:
-                        break
-
-                lat += ~(result >> 1) if result & 1 else (result >> 1)
-
-                # Decode lng
-                result = 0
-                shift = 0
-                while True:
-                    if index >= length:
-                        raise ValueError("Truncated polyline string")
-                    byte = ord(encoded[index]) - 63
-                    index += 1
-                    result |= (byte & 0x1F) << shift
-                    shift += 5
-                    if byte < 0x20:
-                        break
-
-                lng += ~(result >> 1) if result & 1 else (result >> 1)
-                coordinates.append([lng * 1e-5, lat * 1e-5])
-
-        except Exception:
-            raise ValueError("Malformed polyline string")
-
-        return coordinates

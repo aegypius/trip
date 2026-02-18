@@ -3,13 +3,14 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException
 from sqlmodel import select
 
-from ..config import get_settings
+from ..config import settings
 from ..deps import SessionDep
 from ..models.models import (Category, CategoryRead, Image, Place, PlaceCreate,
                              PlaceRead, TokenGoogleSearch, TokenPlaceCreate)
 from ..security import api_token_to_user
+from ..telemetry import record_exception
 from ..utils.utils import (b64img_decode, download_file, patch_image,
-                           remove_image, save_image_to_file)
+                           save_image_to_file)
 from .places import create_place
 from .providers import bulk_to_places, google_resolve_shortlink, text_search
 
@@ -44,34 +45,30 @@ async def token_create_place(
         user=current_user,
     )
 
-    filename = None
     if place.image:
         if place.image[:4] == "http":
-            fp, file_size = await download_file(place.image)
+            fp = await download_file(place.image)
             if fp:
                 patch_image(fp)
-                image = Image(filename=fp.split("/")[-1], file_size=file_size, user=current_user)
+                image = Image(filename=fp.split("/")[-1], user=current_user)
                 session.add(image)
                 session.flush()
+                session.refresh(image)
                 new_place.image_id = image.id
         else:
             image_bytes = b64img_decode(place.image)
-            filename, file_size = save_image_to_file(image_bytes, get_settings().PLACE_IMAGE_SIZE)
+            filename = save_image_to_file(image_bytes, settings.PLACE_IMAGE_SIZE)
             if not filename:
                 raise HTTPException(status_code=400, detail="Bad request")
-            image = Image(filename=filename, file_size=file_size, user=current_user)
+            image = Image(filename=filename, user=current_user)
             session.add(image)
-            session.flush()
+            session.commit()
+            session.refresh(image)
             new_place.image_id = image.id
 
-    try:
-        session.add(new_place)
-        session.commit()
-    except Exception:
-        session.rollback()
-        if filename:
-            remove_image(filename)
-        raise HTTPException(status_code=500, detail="Failed to create")
+    session.add(new_place)
+    session.commit()
+    session.refresh(new_place)
     return PlaceRead.serialize(new_place)
 
 
@@ -91,35 +88,27 @@ async def token_google_search(
     db_user = api_token_to_user(session, X_Api_Token)
     current_user = db_user.username
 
-    query = data.q
     try:
+        query = data.q
         if "maps.app.goo.gl" in query:
-            result = await google_resolve_shortlink(query.rstrip("/").split("/")[-1], session, current_user)
+            result = await google_resolve_shortlink(query.split("/")[-1], session, current_user)
         elif "google.com/maps/place/" in query:
             results = await bulk_to_places([query], session, current_user)
             result = results[0]
         else:
-            results = await text_search(query, session, current_user)
-            result = results[0] if results else None
-
-        if not result:
-            raise HTTPException(status_code=404, detail="Place not found")
-
-    except Exception as exc:
-        logger.error(f"[BY_TOKEN] Error resolving Google Search query '{query}': {exc}")
+            results = await text_search(data.q, session, current_user)
+            result = results[0]
+    except Exception as e:
+        record_exception(e)
         raise HTTPException(status_code=404, detail="Not found")
 
-    category = None
-    if result.category:
-        category = session.exec(
-            select(Category).where(Category.user == current_user, Category.name == result.category)
-        ).first()
+    category_name = result.category or data.category
+    if not category_name:
+        raise HTTPException(status_code=400, detail="Category not set")
 
-    if not category and data.category:
-        category = session.exec(
-            select(Category).where(Category.user == current_user, Category.name == data.category)
-        ).first()
-
+    category = session.exec(
+        select(Category).where(Category.user == current_user, Category.name == category_name)
+    ).first()
     if not category:
         raise HTTPException(status_code=400, detail="Bad Request, unknown Category")
 
