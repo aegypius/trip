@@ -185,6 +185,7 @@ export class TripComponent implements AfterViewInit, OnDestroy {
   isMembersDialogVisible = false;
   isAttachmentsDialogVisible = false;
   isChecklistDialogVisible = false;
+  isBetaDialogVisible = this.shouldShowBetaDialog();
   selectedItemProps = signal<string[]>(['place', 'comment', 'price']);
 
   tripSharedDetails$?: Observable<SharedTripDetails>;
@@ -462,6 +463,9 @@ export class TripComponent implements AfterViewInit, OnDestroy {
     this.statuses = this.utilsService.statuses;
     this.username = this.utilsService.loggedUser;
 
+    // Check beta dialog on initialization
+    this.isBetaDialogVisible = this.shouldShowBetaDialog();
+
     this.plansSearchInput.valueChanges
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed())
       .subscribe((value) => this.searchQuery.set(value || ''));
@@ -602,6 +606,28 @@ export class TripComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy() {
     this.cleanupMap();
+  }
+
+  shouldShowBetaDialog(): boolean {
+    const dismissedUntil = localStorage.getItem('betaDialogDismissedUntil');
+    if (!dismissedUntil) return true;
+    
+    const dismissedDate = new Date(dismissedUntil);
+    const now = new Date();
+    
+    if (now >= dismissedDate) {
+      localStorage.removeItem('betaDialogDismissedUntil');
+      return true;
+    }
+    
+    return false;
+  }
+
+  dismissBetaDialog() {
+    const now = new Date();
+    const dismissUntil = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000); // 15 days in milliseconds
+    localStorage.setItem('betaDialogDismissedUntil', dismissUntil.toISOString());
+    this.isBetaDialogVisible = false;
   }
 
   cleanupMap() {
