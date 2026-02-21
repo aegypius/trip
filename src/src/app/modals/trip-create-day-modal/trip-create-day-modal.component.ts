@@ -38,6 +38,7 @@ export class TripCreateDayModalComponent {
   daysForm: FormGroup;
   dayNames: string[] = [];
   months = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May.', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
+  dayNamesShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   tabValue: number = 0;
 
   constructor(
@@ -79,7 +80,8 @@ export class TripCreateDayModalComponent {
           if (!value) return;
           if (this.dayForm.get('label')?.value) return;
           const day = String(value.getDate()).padStart(2, '0');
-          const label = `${day} ${this.months[value.getMonth()]}`;
+          const dayOfWeek = this.dayNamesShort[value.getDay()];
+          const label = `${dayOfWeek} ${day} ${this.months[value.getMonth()]}`;
           this.dayForm.get('label')?.setValue(label);
         },
       });

@@ -265,8 +265,9 @@
                 </div>
                 <div class="min-w-0 flex-1">
                   <h3 class="font-medium text-primary-900 dark:text-white truncate">{{ group.day.label }}</h3>
-                  <p class="text-xs text-primary-500 dark:text-primary-400 truncate">{{
-                    group.day.dt | date: 'd MMM, y' }}</p>
+                  <p class="text-xs text-primary-500 dark:text-primary-400 truncate">
+                    {{ group.day.dt | date: 'EEE, d MMM, y' }}
+                  </p>
                 </div>
               </div>
 
@@ -468,8 +469,8 @@
                 <h3 class="font-medium truncate text-primary-900 dark:text-white">
                   {{ group.day.label }}
                 </h3>
-                <p class="text-xs text-primary-500 dark:text-primary-400">{{
-                  group.day.dt | date: 'd MMM, y' }}
+                <p class="text-xs text-primary-500 dark:text-primary-400">
+                  {{ group.day.dt | date: 'EEE, d MMM, y' }}
                 </p>
               </div>
             </div>
@@ -991,7 +992,7 @@
 
             <div class="text-primary-600 flex items-center gap-1 mt-1">
               <i class="pi pi-calendar text-xs"></i>
-              <span class="text-sm font-medium truncate">{{ day.dt | date: 'd MMM, y' }}</span>
+              <span class="text-sm font-medium truncate">{{ day.dt | date: 'EEE, d MMM, y' }}</span>
             </div>
           </div>
 
@@ -1521,7 +1522,8 @@
           <div class="flex-1 h-px bg-primary-300"></div>
           @if (group.day.dt) {
           <span class="text-sm font-medium text-primary-400 whitespace-nowrap">{{
-            group.day.dt | date: 'd MMM, y' }}</span>
+            group.day.dt | date: 'EEE, d MMM, y'
+            }}</span>
           }
         </div>
 
